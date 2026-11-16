@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.log
+test/_tmp_*.json
+test/_p.json
+dryrun_out.txt

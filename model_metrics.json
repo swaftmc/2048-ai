@@ -1,0 +1,63 @@
+{
+  "teacher": {
+    "games": 12,
+    "states": 7812,
+    "reached_2048": 2,
+    "success_rate": 0.16666666666666666,
+    "mean_moves_to_2048": 1024.5,
+    "mean_max_tile": 896.0
+  },
+  "policy": {
+    "val_agreement_with_teacher": 0.5704225352112676,
+    "train_accuracy": 0.51296
+  },
+  "value": {
+    "val_mae_moves": 704024.098309157,
+    "val_rmse_moves": 1406208.9128569022,
+    "units": "teacher eval units"
+  },
+  "student": {
+    "policy_only": {
+      "mode": "policy",
+      "depth": 2,
+      "games": 8,
+      "success_rate": 0.0,
+      "mean_moves_to_2048": null,
+      "median_moves_to_2048": null,
+      "mean_max_tile": 160.0,
+      "max_tile_histogram": {
+        "128": 6,
+        "256": 2
+      }
+    },
+    "search_depth1": {
+      "mode": "search",
+      "depth": 1,
+      "games": 8,
+      "success_rate": 0.0,
+      "mean_moves_to_2048": null,
+      "median_moves_to_2048": null,
+      "mean_max_tile": 136.0,
+      "max_tile_histogram": {
+        "64": 1,
+        "128": 6,
+        "256": 1
+      }
+    },
+    "search_depth2": {
+      "mode": "search",
+      "depth": 2,
+      "games": 8,
+      "success_rate": 0.0,
+      "mean_moves_to_2048": null,
+      "median_moves_to_2048": null,
+      "mean_max_tile": 336.0,
+      "max_tile_histogram": {
+        "128": 1,
+        "256": 4,
+        "512": 3
+      }
+    }
+  },
+  "elapsed_sec": 95.6
+}

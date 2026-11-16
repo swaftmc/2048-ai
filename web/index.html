@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2048 - linear model agent</title>
+<style>
+  :root {
+    --bg: #1a1a1e; --panel: #24242a; --line: #35353d; --text: #e9e9ef; --muted: #9a9aa8;
+    --accent: #7c6cf0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+         font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  h1 { font-size: 18px; margin: 0 0 4px; letter-spacing: .2px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .wrap { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; max-width: 940px; }
+  #board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 400px;
+           padding: 10px; background: var(--panel); border-radius: 14px; }
+  .cell { aspect-ratio: 1; border-radius: 8px; background: #2e2e36; display: flex;
+          align-items: center; justify-content: center; font-weight: 700; font-size: 30px;
+          color: #f7f7fb; }
+  .panel { background: var(--panel); border-radius: 14px; padding: 16px; min-width: 250px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  button, select, input { background: #32323c; color: var(--text); border: 1px solid var(--line);
+                   border-radius: 8px; padding: 7px 12px; font: inherit; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); }
+  label { color: var(--muted); font-size: 12px; }
+  .stats { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; margin-top: 6px; }
+  .stats b { font-variant-numeric: tabular-nums; }
+  .k { color: var(--muted); }
+  #log { margin-top: 12px; font-family: ui-monospace, monospace; font-size: 12px; color: var(--muted);
+         max-height: 190px; overflow: auto; white-space: pre-wrap; }
+  .v2{background:#eee4da;color:#776e65}.v4{background:#ede0c8;color:#776e65}
+  .v8{background:#f2b179;color:#fff}.v16{background:#f59563;color:#fff}
+  .v32{background:#f67c5f;color:#fff}.v64{background:#f65e3b;color:#fff}
+  .v128{background:#edcf72;color:#fff}.v256{background:#edcc61;color:#fff}
+  .v512{background:#edc850;color:#fff}.v1024{background:#ecc53b;color:#fff}
+  .v2048{background:#ecc22e;color:#fff}.v4096{background:#5f8de8;color:#fff}
+  .vhuge{background:#3d7ad6;color:#fff}
+</style>
+</head>
+<body>
+<h1>2048 &mdash; linear model agent</h1>
+<div class="sub" id="subtitle">Loading model&hellip;</div>
+
+<div class="wrap">
+  <div id="board"></div>
+  <div class="panel">
+    <div class="row">
+      <button id="play" class="primary">Play</button>
+      <button id="step">Step</button>
+      <button id="reset">Reset</button>
+      <select id="mode">
+        <option value="search">Search (value model)</option>
+        <option value="policy">Policy head (ML)</option>
+      </select>
+      <select id="depth">
+        <option value="1">depth 1</option>
+        <option value="2" selected>depth 2</option>
+        <option value="3">depth 3</option>
+      </select>
+    </div>
+    <div class="row">
+      <button id="bench">Benchmark 20 games</button>
+      <label for="seed">seed</label>
+      <input id="seed" type="number" value="1" style="width:80px">
+    </div>
+    <div class="stats">
+      <span class="k">moves</span><b id="s-moves">0</b>
+      <span class="k">score</span><b id="s-score">0</b>
+      <span class="k">largest tile</span><b id="s-max">0</b>
+      <span class="k">moves to 2048</span><b id="s-to2048">-</b>
+      <span class="k">teacher agreement</span><b id="s-agree">-</b>
+      <span class="k">value RMSE (moves)</span><b id="s-rmse">-</b>
+    </div>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script src="engine.js"></script>
+<script>
+"use strict";
+/* The model is embedded at build time (tools/build_html.py replaces the placeholder and
+   inlines engine.js, producing one self-contained HTML file). */
+const MODEL_B64 = "__MODEL_B64__";
+const MODEL = (() => {
+  if (!MODEL_B64 || MODEL_B64.startsWith("__")) return null;
+  try {
+    const bin = atob(MODEL_B64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch (e) { return null; }
+})();
+
+const boardEl = document.getElementById("board");
+const logEl = document.getElementById("log");
+let board, score, moves, to2048, running;
+
+function log(msg) {
+  logEl.textContent = msg + "\n" + logEl.textContent;
+}
+function render() {
+  boardEl.innerHTML = "";
+  for (let i = 0; i < 4; i++) for (let j = 0; j < 4; j++) {
+    const d = document.createElement("div");
+    d.className = "cell";
+    const v = board[i][j];
+    if (v) {
+      d.classList.add(v <= 2 ? "v2" : v <= 4 ? "v4" : v <= 8 ? "v8" : v <= 16 ? "v16"
+                  : v <= 32 ? "v32" : v <= 64 ? "v64" : v <= 128 ? "v128" : v <= 256 ? "v256"
+                  : v <= 512 ? "v512" : v <= 1024 ? "v1024" : v <= 2048 ? "v2048"
+                  : v <= 4096 ? "v4096" : "vhuge");
+      d.textContent = v;
+    }
+    boardEl.appendChild(d);
+  }
+  document.getElementById("s-moves").textContent = moves;
+  document.getElementById("s-score").textContent = score;
+  document.getElementById("s-max").textContent = Math.max(...board.flat());
+  document.getElementById("s-to2048").textContent = to2048 === null ? "-" : to2048;
+}
+function resetGame(seed) {
+  const rng = Engine.mulberry32(seed);
+  board = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+  board = Engine.spawn(board, rng); board = Engine.spawn(board, rng);
+  score = 0; moves = 0; to2048 = null;
+  render();
+}
+function stepOnce() {
+  const mode = document.getElementById("mode").value;
+  const depth = parseInt(document.getElementById("depth").value, 10);
+  const seed = parseInt(document.getElementById("seed").value, 10) || 1;
+  const d = Engine.chooseMove(MODEL, board, mode, depth, Engine.mulberry32(seed * 7919 + moves));
+  if (d < 0) return false;
+  const before = Math.max(...board.flat());
+  const moved = Engine.moveBoard(board, d);
+  if (Engine.sameBoard(moved, board)) return false;
+  board = moved; moves++;
+  for (const row of board) for (const v of row) if (v > before) score += v;
+  board = Engine.spawn(board, Engine.mulberry32(seed * 104729 + moves));
+  if (Math.max(...board.flat()) >= 2048 && to2048 === null) {
+    to2048 = moves; log(`2048 reached in ${moves} moves`);
+  }
+  render();
+  return true;
+}
+function playLoop() {
+  if (!stepOnce() || Math.max(...board.flat()) >= 2048 || Engine.isDead(board)) {
+    running = false; document.getElementById("play").textContent = "Play"; log("stopped"); return;
+  }
+  setTimeout(playLoop, 90);
+}
+async function benchmark(n) {
+  const mode = document.getElementById("mode").value;
+  const depth = parseInt(document.getElementById("depth").value, 10);
+  const seed = parseInt(document.getElementById("seed").value, 10) || 1;
+  let wins = 0, totalMoves = 0, best = 0;
+  for (let g = 0; g < n; g++) {
+    const rng = Engine.mulberry32(seed * 1000003 + g);
+    let b = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
+    b = Engine.spawn(b, rng); b = Engine.spawn(b, rng);
+    let mv = 0, hit = null;
+    while (mv < 3000) {
+      const d = Engine.chooseMove(MODEL, b, mode, depth,
+                                  Engine.mulberry32(seed * 7919 + g * 1013 + mv));
+      if (d < 0) break;
+      const moved = Engine.moveBoard(b, d);
+      if (Engine.sameBoard(moved, b)) break;
+      b = Engine.spawn(moved, Engine.mulberry32(seed * 104729 + g * 7919 + mv));
+      mv++;
+      if (Math.max(...b.flat()) >= 2048) { hit = mv; break; }
+      if (Engine.isDead(b)) break;
+    }
+    const mx = Math.max(...b.flat());
+    best = Math.max(best, mx);
+    if (hit) { wins++; totalMoves += hit; }
+    log(`game ${g + 1}/${n}: ${hit ? "2048 in " + hit + " moves" : "failed, max tile " + mx}`);
+    await new Promise(r => setTimeout(r, 0));
+  }
+  const msg = `${wins}/${n} reached 2048` +
+    (wins ? `, mean ${(totalMoves / wins).toFixed(1)} moves` : "") + `, best tile ${best}`;
+  log(msg);
+}
+
+document.getElementById("play").onclick = () => {
+  running = !running;
+  document.getElementById("play").textContent = running ? "Pause" : "Play";
+  if (running) playLoop();
+};
+document.getElementById("step").onclick = () => { running = false; stepOnce(); };
+document.getElementById("reset").onclick = () => {
+  running = false; resetGame(parseInt(document.getElementById("seed").value, 10) || 1);
+};
+document.getElementById("bench").onclick = () => benchmark(20);
+
+if (MODEL) {
+  const m = MODEL.meta || {};
+  document.getElementById("subtitle").innerHTML =
+    `policy head: multinomial logistic regression &middot; value head: ridge regression &middot; ` +
+    `${MODEL.n_features} features &middot; teacher: depth ${m.teacher ? m.teacher.depth : "?"}, ` +
+    `${m.teacher ? m.teacher.games : "?"} games` +
+    (m.metrics && m.metrics.policy ? ` &middot; teacher agreement ` +
+      `${(100 * m.metrics.policy.val_agreement_with_teacher).toFixed(1)}%` : "");
+  if (m.metrics && m.metrics.value) {
+    document.getElementById("s-rmse").textContent =
+      m.metrics.value.val_rmse_moves.toFixed(1) +
+      (m.metrics.value.units ? " (" + m.metrics.value.units + ")" : "");
+  }
+  if (m.metrics && m.metrics.policy) {
+    document.getElementById("s-agree").textContent =
+      (100 * m.metrics.policy.val_agreement_with_teacher).toFixed(1) + "%";
+  }
+  if (m.value_target && m.value_target !== "moves_to_2048") {
+    document.getElementById("s-to2048").parentElement.style.opacity = "0.4";
+    document.getElementById("s-to2048").textContent = "n/a";
+  }
+  resetGame(1);
+} else {
+  document.getElementById("subtitle").textContent =
+    "No model embedded - run tools/build_html.py with a trained model.json.";
+}
+</script>
+</body>
+</html>
