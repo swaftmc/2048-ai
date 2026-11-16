@@ -24,7 +24,7 @@ def generate_dataset(games: int = 100, depth: int = 3, cell_samples: int = 16, b
     gen.manual_seed(seed)
     w = weights or teacher.WEIGHTS
 
-    boards_out, moves_out, values_out, ends_out, teacher_vals = [], [], [], [], []
+    boards_out, moves_out, values_out, ends_out, teacher_vals, eval_vals = [], [], [], [], [], []
     stats = {"games": 0, "reached_2048": 0, "moves_to_2048": [], "max_tile": [], "states": 0}
     done = 0
 
@@ -48,8 +48,12 @@ def generate_dataset(games: int = 100, depth: int = 3, cell_samples: int = 16, b
             moves_np = moves.cpu().numpy()
             cur_np = cur.cpu().numpy().astype(np.int16)
             vals_np = values.cpu().numpy().astype(np.float32)
+            # the teacher's *static* evaluation of each board: this one is a linear
+            # function of the features, so a ridge head can reproduce it exactly
+            eval_np = teacher.heuristic(cur, w).cpu().numpy().astype(np.float32)
             for j, gi in enumerate(idx):
-                records[gi].append((cur_np[j], int(moves_np[j]), float(vals_np[j])))
+                records[gi].append((cur_np[j], int(moves_np[j]), float(vals_np[j]),
+                                    float(eval_np[j])))
 
             for d in range(4):
                 sel = idx[moves_np == d]
@@ -71,12 +75,13 @@ def generate_dataset(games: int = 100, depth: int = 3, cell_samples: int = 16, b
         for gi in range(b):
             steps = reached_at[gi]
             end = ended_at[gi] if ended_at[gi] is not None else len(records[gi])
-            for t, (board, move, tval) in enumerate(records[gi]):
+            for t, (board, move, tval, evalval) in enumerate(records[gi]):
                 boards_out.append(board)
                 moves_out.append(move)
                 values_out.append(float(steps - t) if steps is not None else fail_label)
                 ends_out.append(float(end - t))
                 teacher_vals.append(float(tval))
+                eval_vals.append(float(evalval))
             stats["games"] += 1
             stats["states"] += len(records[gi])
             if steps is not None:
@@ -97,5 +102,6 @@ def generate_dataset(games: int = 100, depth: int = 3, cell_samples: int = 16, b
         "value": np.asarray(values_out, dtype=np.float32),
         "value_to_end": np.asarray(ends_out, dtype=np.float32),
         "teacher_value": np.asarray(teacher_vals, dtype=np.float32),
+        "eval_value": np.asarray(eval_vals, dtype=np.float32),
         "stats": stats,
     }

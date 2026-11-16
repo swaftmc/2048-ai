@@ -65,24 +65,25 @@ def main() -> None:
 
 def _v(empty: float = 0.0, rotations: int = 1, matrix: str = "nneonneo", smooth: float = 0.0,
       mono: float = 0.0, base: float = 16.0, ratio: float = 16.0, min_tile: int = 0,
-      tile_score: str = "value") -> teacher.EvalWeights:
+      tile_score: str = "value", max_tile: float = 0.0) -> teacher.EvalWeights:
     return teacher.EvalWeights(tile_score=tile_score, empty=empty, smooth=smooth, mono=mono,
                                 row_ratio=ratio, col_ratio=ratio, base=base, rotations=rotations,
-                                matrix=matrix, min_tile=min_tile)
+                                matrix=matrix, min_tile=min_tile, max_tile=max_tile)
 
 
 CANDIDATES = [
-    ("nneon rot1 e3000 min4", _v(empty=3000, min_tile=4)),
-    ("nneon rot1 e3000 min2", _v(empty=3000, min_tile=2)),
-    ("nneon rot1 e3000 min8", _v(empty=3000, min_tile=8)),
-    ("nneon rot1 e3000 min16", _v(empty=3000, min_tile=16)),
-    ("nneon rot1 e1000 min4", _v(empty=1000, min_tile=4)),
-    ("nneon rot1 e10000 min4", _v(empty=10000, min_tile=4)),
-    ("nneon rot1 e3000 min4 m50", _v(empty=3000, min_tile=4, mono=50)),
-    ("nneon rot1 e3000 min4 s50", _v(empty=3000, min_tile=4, smooth=50)),
-    ("nneon rot4 e3000 min4", _v(empty=3000, min_tile=4, rotations=4)),
-    ("snake rot1 e3000 min8", _v(empty=3000, min_tile=8, matrix="snake")),
-    ("grad16 rot1 e3000 min4", _v(empty=3000, min_tile=4, matrix="gradient")),
+    ("base min16", _v(empty=3000, min_tile=16)),
+    ("base min8", _v(empty=3000, min_tile=8)),
+    ("base min4", _v(empty=3000, min_tile=4)),
+    ("base min0", _v(empty=3000, min_tile=0)),
+    ("min16 mt200", _v(empty=3000, min_tile=16, max_tile=200)),
+    ("min16 mt2000", _v(empty=3000, min_tile=16, max_tile=2000)),
+    ("min8 mt2000", _v(empty=3000, min_tile=8, max_tile=2000)),
+    ("min4 mt2000", _v(empty=3000, min_tile=4, max_tile=2000)),
+    ("min16 e1000 mt2000", _v(empty=1000, min_tile=16, max_tile=2000)),
+    ("min16 e10000 mt2000", _v(empty=10000, min_tile=16, max_tile=2000)),
+    ("min16 s50", _v(empty=3000, min_tile=16, smooth=50)),
+    ("min16 m50", _v(empty=3000, min_tile=16, mono=50)),
 ]
 
 

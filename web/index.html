@@ -72,8 +72,9 @@
       <span class="k">score</span><b id="s-score">0</b>
       <span class="k">largest tile</span><b id="s-max">0</b>
       <span class="k">moves to 2048</span><b id="s-to2048">-</b>
+      <span class="k">predicted moves to 2048</span><b id="s-expected">-</b>
       <span class="k">teacher agreement</span><b id="s-agree">-</b>
-      <span class="k">value RMSE (moves)</span><b id="s-rmse">-</b>
+      <span class="k">value RMSE (teacher eval)</span><b id="s-rmse">-</b>
     </div>
     <div id="log"></div>
   </div>
@@ -144,6 +145,10 @@ function stepOnce() {
   if (Math.max(...board.flat()) >= 2048 && to2048 === null) {
     to2048 = moves; log(`2048 reached in ${moves} moves`);
   }
+  const est = Engine.valueMoves(MODEL, Engine.features(board));
+  if (est !== null) {
+    document.getElementById("s-expected").textContent = est.toFixed(0);
+  }
   render();
   return true;
 }
@@ -206,14 +211,13 @@ if (MODEL) {
       `${(100 * m.metrics.policy.val_agreement_with_teacher).toFixed(1)}%` : "");
   if (m.metrics && m.metrics.value) {
     document.getElementById("s-rmse").textContent =
-      m.metrics.value.val_rmse_moves.toFixed(1) +
-      (m.metrics.value.units ? " (" + m.metrics.value.units + ")" : "");
+      m.metrics.value.val_rmse.toFixed(1) + " (teacher eval units)";
   }
   if (m.metrics && m.metrics.policy) {
     document.getElementById("s-agree").textContent =
       (100 * m.metrics.policy.val_agreement_with_teacher).toFixed(1) + "%";
   }
-  if (m.value_target && m.value_target !== "moves_to_2048") {
+  if (!MODEL.value_moves) {
     document.getElementById("s-to2048").parentElement.style.opacity = "0.4";
     document.getElementById("s-to2048").textContent = "n/a";
   }

@@ -173,7 +173,9 @@ def test_inference_matches_js():
     X = feat.features(np.stack(boards))
     policy = rng.normal(size=(4, feat.N_FEATURES)) * 0.1
     value = rng.normal(size=feat.N_FEATURES) * 0.1
-    model = student.Model(policy_w=policy, policy_b=np.zeros(4), value_w=value, value_b=0.5)
+    model = student.Model(policy_w=policy, policy_b=np.zeros(4), value_w=value, value_b=0.5,
+                          value_target="eval",
+                          moves_w=value, moves_b=0.5, moves_mean=10.0, moves_std=3.0)
     payload = {
         "boards": [b.tolist() for b in boards],
         "model": model.to_dict(),
@@ -227,6 +229,11 @@ def test_search_action_matches_js():
         policy_b=np.zeros(4),
         value_w=rng.normal(size=feat.N_FEATURES) * 0.1,
         value_b=0.5,
+        value_target="eval",
+        moves_w=rng.normal(size=feat.N_FEATURES) * 0.1,
+        moves_b=0.5,
+        moves_mean=10.0,
+        moves_std=3.0,
     )
     js = _run_node(NODE_CHOOSE_SCRIPT, {"boards": [b.tolist() for b in boards],
                                         "model": model.to_dict()})

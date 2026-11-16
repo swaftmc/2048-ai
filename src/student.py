@@ -25,10 +25,13 @@ INVALID = -1.0e7
 class Model:
     policy_w: np.ndarray  # (4, F)
     policy_b: np.ndarray  # (4,)
-    value_w: np.ndarray  # (F,)
+    value_w: np.ndarray  # (F,)  search head: lower = a better position
     value_b: float
-    value_mean: float = 0.0  # target mean the value head was fitted on
-    value_std: float = 1.0  # target std the value head was fitted on
+    value_target: str = "eval"  # 'eval' (teacher's static evaluation) or 'moves_to_2048'
+    moves_w: np.ndarray | None = None  # reporting head: moves remaining to a 2048 tile
+    moves_b: float = 0.0
+    moves_mean: float = 0.0
+    moves_std: float = 1.0
     feature_mean: np.ndarray | None = None  # feature standardisation
     feature_std: np.ndarray | None = None
     meta: dict = field(default_factory=dict)
@@ -50,8 +53,10 @@ class Model:
 
     def value(self, phi: np.ndarray) -> np.ndarray:
         """Predicted moves remaining until a 2048 tile appears (lower is better)."""
-        raw = self.value_raw(phi) * self.value_std + self.value_mean
-        return np.maximum(np.expm1(raw), 0.0)
+        if self.moves_w is None:
+            return np.zeros(len(np.atleast_1d(phi)))
+        raw = self.transform(phi) @ self.moves_w + self.moves_b
+        return np.maximum(raw * self.moves_std + self.moves_mean, 0.0)
 
     # -- io ----------------------------------------------------------------------
     def to_dict(self) -> dict:
@@ -65,8 +70,13 @@ class Model:
             "value": {
                 "coef": [float(x) for x in self.value_w],
                 "intercept": float(self.value_b),
-                "mean": float(self.value_mean),
-                "std": float(self.value_std),
+                "target": self.value_target,
+            },
+            "value_moves": None if self.moves_w is None else {
+                "coef": [float(x) for x in self.moves_w],
+                "intercept": float(self.moves_b),
+                "mean": float(self.moves_mean),
+                "std": float(self.moves_std),
             },
             "scaler": {
                 "mean": [float(x) for x in (self.feature_mean if self.feature_mean is not None
@@ -88,13 +98,17 @@ class Model:
         val = d["value"]
         scaler = d.get("scaler", {})
         n_feat = int(d["n_features"])
+        moves = d.get("value_moves")
         return Model(
             policy_w=np.asarray(d["policy"]["coef"], dtype=np.float64),
             policy_b=np.asarray(d["policy"]["intercept"], dtype=np.float64),
             value_w=np.asarray(val["coef"], dtype=np.float64),
             value_b=float(val["intercept"]),
-            value_mean=float(val.get("mean", 0.0)),
-            value_std=float(val.get("std", 1.0)),
+            value_target=str(val.get("target", "moves_to_2048")),
+            moves_w=None if moves is None else np.asarray(moves["coef"], dtype=np.float64),
+            moves_b=0.0 if moves is None else float(moves["intercept"]),
+            moves_mean=0.0 if moves is None else float(moves.get("mean", 0.0)),
+            moves_std=1.0 if moves is None else float(moves.get("std", 1.0)),
             feature_mean=np.asarray(scaler.get("mean", np.zeros(n_feat)), dtype=np.float64),
             feature_std=np.asarray(scaler.get("std", np.ones(n_feat)), dtype=np.float64),
             meta=d.get("meta", {}),
@@ -121,7 +135,8 @@ def fit_value(X: np.ndarray, y: np.ndarray, alpha: float = 1.0) -> Ridge:
     return ridge
 
 
-def build_model(clf, ridge, meta: dict, value_mean: float = 0.0, value_std: float = 1.0,
+def build_model(clf, ridge, meta: dict, value_target: str = "eval",
+                moves_ridge=None, moves_mean: float = 0.0, moves_std: float = 1.0,
                 feature_mean: np.ndarray | None = None,
                 feature_std: np.ndarray | None = None) -> Model:
     return Model(
@@ -129,8 +144,13 @@ def build_model(clf, ridge, meta: dict, value_mean: float = 0.0, value_std: floa
         policy_b=np.asarray(clf.intercept_, dtype=np.float64),
         value_w=np.asarray(ridge.coef_, dtype=np.float64).reshape(-1),
         value_b=float(np.asarray(ridge.intercept_).reshape(-1)[0]),
-        value_mean=float(value_mean),
-        value_std=float(value_std),
+        value_target=value_target,
+        moves_w=None if moves_ridge is None else np.asarray(moves_ridge.coef_,
+                                                           dtype=np.float64).reshape(-1),
+        moves_b=0.0 if moves_ridge is None else float(
+            np.asarray(moves_ridge.intercept_).reshape(-1)[0]),
+        moves_mean=float(moves_mean),
+        moves_std=float(moves_std),
         feature_mean=None if feature_mean is None else np.asarray(feature_mean, dtype=np.float64),
         feature_std=None if feature_std is None else np.asarray(feature_std, dtype=np.float64),
         meta=meta,
@@ -254,8 +274,16 @@ def play_game(model: Model, mode: str = "search", depth: int = 2, k: int = 32, s
 
 
 def evaluate(model: Model, mode: str = "search", games: int = 20, depth: int = 2, k: int = 32,
-             seed: int = 0) -> dict:
-    results = [play_game(model, mode=mode, depth=depth, k=k, seed=seed + i) for i in range(games)]
+             seed: int = 0, verbose: bool = False) -> dict:
+    results = []
+    for i in range(games):
+        results.append(play_game(model, mode=mode, depth=depth, k=k, seed=seed + i))
+        if verbose:
+            r = results[-1]
+            print(f"  [{mode} d{depth}] game {i + 1}/{games}: "
+                  f"max tile {r['max_tile']}, "
+                  f"{'2048 in ' + str(r['moves_to_2048']) + ' moves' if r['reached_2048'] else 'no 2048'}",
+                  flush=True)
     wins = [r for r in results if r["reached_2048"]]
     return {
         "mode": mode,

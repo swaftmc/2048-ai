@@ -159,13 +159,17 @@
   /* ----------------------------------------------------------------- inference */
   function dot(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
   function valueRaw(model, phi) {
+    // the search head: the teacher's judgement of the position (lower = better)
     return dot(model.value.coef, transform(model, phi)) + model.value.intercept;
   }
   function valueMoves(model, phi) {
-    const v = model.value;
-    const mean = v.mean === undefined ? 0 : v.mean;
-    const std = v.std === undefined ? 1 : v.std;
-    return Math.max(Math.expm1(valueRaw(model, phi) * std + mean), 0);
+    // the reporting head: predicted moves remaining until a 2048 tile appears
+    const m = model.value_moves;
+    if (!m) return null;
+    const mean = m.mean === undefined ? 0 : m.mean;
+    const std = m.std === undefined ? 1 : m.std;
+    const raw = dot(m.coef, transform(model, phi)) + m.intercept;
+    return Math.max(raw * std + mean, 0);
   }
 
   function policyScores(model, phi) {
