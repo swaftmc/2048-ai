@@ -45,6 +45,7 @@ def run(games: int = 200, depth: int = 3, cell_samples: int = 8, batch: int = 8,
             np.savez_compressed(cache, boards=data["boards"], move=data["move"],
                                 value=data["value"], value_to_end=data["value_to_end"],
                                 teacher_value=data["teacher_value"],
+                                eval_value=data["eval_value"],
                                 stats=json.dumps(data["stats"]))
             if not quiet:
                 print(f"[teacher] dataset cached to {cache}", flush=True)
@@ -56,8 +57,8 @@ def run(games: int = 200, depth: int = 3, cell_samples: int = 8, batch: int = 8,
     # so lower stays better). That evaluation is a linear function of the features, so
     # the ridge reproduces it almost exactly and the browser's search then behaves like
     # a search run with the teacher's own judgement.
-    y_value_raw = -data["eval_value"].astype(np.float64)
-    value_target = "eval"
+    y_value_raw = -data["eval_value" if "eval_value" in data else "teacher_value"].astype(np.float64)
+    value_target = "eval" if "eval_value" in data else "teacher_search_value"
     v_mean = float(y_value_raw.mean())
     v_std = float(y_value_raw.std()) or 1.0
     y_value = (y_value_raw - v_mean) / v_std
@@ -65,12 +66,11 @@ def run(games: int = 200, depth: int = 3, cell_samples: int = 8, batch: int = 8,
     # A second head reports how many moves the teacher had left before a 2048 tile.
     success_rate = data["stats"]["reached_2048"] / max(data["stats"]["games"], 1)
     have_moves = success_rate >= 0.25
-    moves_ridge, moves_mean, moves_std = None, 0.0, 1.0
+    moves_mean, moves_std = 0.0, 1.0
+    y_moves = data["value"].astype(np.float64)
     if have_moves:
-        y_moves = data["value"].astype(np.float64)
         moves_mean = float(y_moves.mean())
         moves_std = float(y_moves.std()) or 1.0
-        moves_ridge = student.fit_value(Xs[train_idx], (y_moves[train_idx] - moves_mean) / moves_std)
 
     rng = np.random.default_rng(seed)
     perm = rng.permutation(len(X))
@@ -86,6 +86,10 @@ def run(games: int = 200, depth: int = 3, cell_samples: int = 8, batch: int = 8,
 
     clf = student.fit_policy(Xs[train_idx], y_move[train_idx])
     ridge = student.fit_value(Xs[train_idx], y_value[train_idx])
+    moves_ridge = None
+    if have_moves:
+        moves_ridge = student.fit_value(Xs[train_idx],
+                                        (y_moves[train_idx] - moves_mean) / moves_std)
 
     meta = {
         "trained_at": time.strftime("%Y-%m-%d %H:%M:%S"),

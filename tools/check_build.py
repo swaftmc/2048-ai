@@ -26,7 +26,8 @@ def main() -> None:
     model = json.loads(base64.b64decode(m.group(1)).decode("utf-8"))
     assert model["format"] == "2048-linear-v1"
     print(f"embedded model: {model['n_features']} features, "
-          f"value target {model['meta'].get('value_target')}")
+          f"search head target {model['value'].get('target', '?')}, "
+          f"teacher {model['meta'].get('teacher')}")
 
     # syntax-check the app script that is inlined in the same file
     blocks = re.findall(r"<script>(.*?)</script>", html, re.S)

@@ -203,12 +203,13 @@
           sum += searchValue(model, b2, depth - 1, k, rng); count++;
         }
       } else {
-        for (let s = 0; s < k; s++) {
+        for (let s = 0; s < k / 2; s++) {
           const ci = Math.floor(rng() * 16), i = ci >> 2, j = ci & 3;
           if (moved[i][j] !== 0) continue;
-          const v = rng() < 0.1 ? 4 : 2;
-          const b2 = moved.map(r => r.slice()); b2[i][j] = v;
-          sum += searchValue(model, b2, depth - 1, k, rng); count++;
+          for (const v of [2, 4]) {
+            const b2 = moved.map(r => r.slice()); b2[i][j] = v;
+            sum += searchValue(model, b2, depth - 1, k, rng); count++;
+          }
         }
         if (!count) continue;
       }
@@ -227,7 +228,9 @@
       }
       return best;
     }
-    const k = depth >= 3 ? 8 : 32;
+    // exact chance nodes: every empty cell x {2,4}. Deeper searches sample, which
+    // measured worse than the exact depth-2 search, so the app stays at 1-2.
+    const k = 32;
     let best = -1, bestScore = -Infinity;
     for (let d = 0; d < 4; d++) {
       const moved = moveBoard(board, d);
@@ -239,12 +242,13 @@
           sum += searchValue(model, b2, depth - 1, k, rng); count++;
         }
       } else {
-        for (let s = 0; s < k; s++) {
+        for (let s = 0; s < k / 2; s++) {
           const ci = Math.floor(rng() * 16), i = ci >> 2, j = ci & 3;
           if (moved[i][j] !== 0) continue;
-          const v = rng() < 0.1 ? 4 : 2;
-          const b2 = moved.map(r => r.slice()); b2[i][j] = v;
-          sum += searchValue(model, b2, depth - 1, k, rng); count++;
+          for (const v of [2, 4]) {
+            const b2 = moved.map(r => r.slice()); b2[i][j] = v;
+            sum += searchValue(model, b2, depth - 1, k, rng); count++;
+          }
         }
       }
       if (!count) continue;

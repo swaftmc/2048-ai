@@ -178,13 +178,20 @@ def policy_action(board: np.ndarray, model: Model) -> int:
 
 
 def _proposals(n: int, k: int, rng: np.random.Generator, moved: np.ndarray):
-    """(cells, values, valid) for k spawn proposals per node."""
+    """(cells, values, valid) for k spawn proposals per node.
+
+    k >= 32 enumerates every (cell, value) pair exactly. Below that we sample k/2
+    cells and put both a 2 and a 4 in each, which is far less noisy than sampling the
+    tile value as well (a sampled 4 can flip a whole branch of the search).
+    """
     if k >= 32:  # exact enumeration of every (cell, value) pair
         cells = np.broadcast_to(np.tile(np.repeat(np.arange(16), 2), 2)[:k][None, :], (n, k))
         vals = np.broadcast_to(np.tile(np.array([2, 4]), 16)[:k][None, :], (n, k))
     else:
-        cells = rng.integers(0, 16, size=(n, k))
-        vals = np.where(rng.random((n, k)) < engine.SPAWN_P4, 4, 2)
+        half = k // 2
+        picked = rng.integers(0, 16, size=(n, half))
+        cells = np.repeat(picked, 2, axis=1)
+        vals = np.tile(np.array([2, 4]), (n, half))
     occupied = np.take_along_axis(moved.reshape(n, 16), cells, axis=1)
     return cells, vals, occupied == 0
 
