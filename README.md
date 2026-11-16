@@ -3,6 +3,13 @@
 A 2048 agent whose decision making is **linear regression + logistic regression only**.
 No neural networks anywhere in the student.
 
+[![Open in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/swaftmc/2048-ai/blob/main/train.ipynb)
+
+**Fastest path:** open the notebook in Colab, pick Runtime -> GPU, press *Run all*. It
+clones this repo, trains the teacher, and hands you `model.json`. Then
+`python tools/build_html.py model.json` gives you `dist/2048.html` - one self-contained
+file you can double-click to play.
+
 ```
 teacher  = depth-limited expectimax search (hand-written heuristic eval)   [torch]
 labels   = (board, move the teacher played, moves left until a 2048 tile)  [teacher games]
